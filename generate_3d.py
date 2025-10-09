@@ -14,12 +14,28 @@ Examples:
 
 import argparse
 import sys
+import time
 from pathlib import Path
 from PIL import Image
 
 from hy3dgen.rembg import BackgroundRemover
 from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline
 from hy3dgen.texgen import Hunyuan3DPaintPipeline
+
+
+def format_time(seconds):
+    """Format seconds into a human-readable string."""
+    if seconds < 60:
+        return f"{seconds:.2f}s"
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        secs = seconds % 60
+        return f"{minutes}m {secs:.1f}s"
+    else:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = seconds % 60
+        return f"{hours}h {minutes}m {secs:.1f}s"
 
 
 def generate_3d_model(image_path, output_path=None, model_path='tencent/Hunyuan3D-2'):
@@ -34,6 +50,9 @@ def generate_3d_model(image_path, output_path=None, model_path='tencent/Hunyuan3
     Returns:
         Path to the generated .glb file
     """
+    # Start total timer
+    total_start = time.time()
+    
     # Validate input image
     image_path = Path(image_path)
     if not image_path.exists():
@@ -50,37 +69,55 @@ def generate_3d_model(image_path, output_path=None, model_path='tencent/Hunyuan3
     print()
     
     # Load and prepare image
-    print("Loading image...")
+    print("⏱️  Loading image...")
+    step_start = time.time()
     image = Image.open(image_path).convert("RGBA")
+    print(f"   ✓ Image loaded ({format_time(time.time() - step_start)})")
     
     # Remove background if needed
     if image.mode == 'RGB':
-        print("Removing background...")
+        print("⏱️  Removing background...")
+        step_start = time.time()
         rembg = BackgroundRemover()
         image = rembg(image)
+        print(f"   ✓ Background removed ({format_time(time.time() - step_start)})")
     
     # Load shape generation pipeline
-    print("Loading shape generation model...")
+    print("⏱️  Loading shape generation model...")
+    step_start = time.time()
     pipeline_shapegen = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(model_path)
+    print(f"   ✓ Model loaded ({format_time(time.time() - step_start)})")
     
     # Generate shape
-    print("Generating 3D shape...")
+    print("⏱️  Generating 3D shape...")
+    step_start = time.time()
     mesh = pipeline_shapegen(image=image)[0]
-    print(f"✓ Shape generated: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
+    shape_time = time.time() - step_start
+    print(f"   ✓ Shape generated: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces ({format_time(shape_time)})")
     
     # Load texture generation pipeline
-    print("Loading texture generation model...")
+    print("⏱️  Loading texture generation model...")
+    step_start = time.time()
     pipeline_texgen = Hunyuan3DPaintPipeline.from_pretrained(model_path)
+    print(f"   ✓ Model loaded ({format_time(time.time() - step_start)})")
     
     # Apply texture
-    print("Applying texture...")
+    print("⏱️  Applying texture...")
+    step_start = time.time()
     mesh = pipeline_texgen(mesh, image=image)
+    texture_time = time.time() - step_start
+    print(f"   ✓ Texture applied ({format_time(texture_time)})")
     
     # Export to file
-    print(f"Exporting to {output_path}...")
+    print(f"⏱️  Exporting to {output_path}...")
+    step_start = time.time()
     mesh.export(str(output_path))
+    print(f"   ✓ Exported ({format_time(time.time() - step_start)})")
     
+    # Calculate and display total time
+    total_time = time.time() - total_start
     print(f"\n✅ Success! 3D model saved to: {output_path}")
+    print(f"⏱️  Total time: {format_time(total_time)}")
     return output_path
 
 
