@@ -98,7 +98,7 @@ def generate_3d_model(image_path, output_path=None, model_path='tencent/Hunyuan3
     # Load texture generation pipeline
     print("⏱️  Loading texture generation model...")
     step_start = time.time()
-    pipeline_texgen = Hunyuan3DPaintPipeline.from_pretrained(model_path)
+    pipeline_texgen = Hunyuan3DPaintPipeline.from_pretrained(model_path, subfolder='hunyuan3d-paint-v2-0')
     print(f"   ✓ Model loaded ({format_time(time.time() - step_start)})")
     
     # Apply texture
