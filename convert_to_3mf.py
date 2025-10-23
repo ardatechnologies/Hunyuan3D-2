@@ -114,14 +114,14 @@ def convert_glb_to_automated_3mf(input_file, output_file, mode='hardcoded', tole
         COLOR_PALETTE = {
             "WHITE": [255, 255, 255],
             "RED": [210, 30, 45],       # Approximate red from gloves/boots
-            "BLUE_VISOR": [25, 30, 70]  # Approximate blue from visor
+            "BLUE": [25, 30, 70]  # Approximate blue from visor
         }
     elif mode == 'auto':
         print("⚠️  Auto mode not implemented yet. Using hardcoded mode instead.")
         COLOR_PALETTE = {
             "WHITE": [255, 255, 255],
             "RED": [210, 30, 45],
-            "BLUE_VISOR": [25, 30, 70]
+            "BLUE": [25, 30, 70]
         }
     else:
         raise ValueError(f"Unknown mode: {mode}")
@@ -197,7 +197,7 @@ def convert_glb_to_automated_3mf(input_file, output_file, mode='hardcoded', tole
     material_colors = {
         "WHITE": [255, 255, 255, 255],    # RGBA
         "RED": [210, 30, 45, 255],         # RGBA  
-        "BLUE_VISOR": [25, 30, 70, 255]    # RGBA
+        "BLUE": [25, 30, 70, 255]    # RGBA
     }
     
     new_meshes = []
