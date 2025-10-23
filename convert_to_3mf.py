@@ -1,15 +1,36 @@
 #!/usr/bin/env python3
 """
-GLB to 3MF Multi-Color Converter
-Convert a textured GLB file into a multi-color 3MF file for Bambu Lab AMS printing.
+GLB to Automated 3MF Converter
+
+This script converts a textured GLB 3D model into a single, multi-part 3MF file
+with embedded color information. The output is specifically structured to be
+compatible with slicers like Bambu Studio, allowing for one-click import of a
+multi-color model ready for printing with an AMS (Automatic Material System).
+
+The process involves:
+1. Loading a GLB file using the 'trimesh' library.
+2. Partitioning the mesh into separate parts based on a defined color palette.
+3. Manually cleaning the geometry of each part to ensure compatibility.
+4. Programmatically constructing a 3MF file using the 'lib3mf' library,
+   where each color part is a distinct object with a base color material.
+
+Dependencies:
+- trimesh
+- numpy
+- lib3mf
 
 Usage:
-    python convert_to_3mf.py [input_file] [output_file] [--mode hardcoded|auto] [--tolerance N]
+    python create_automated_3mf.py [input_file] [output_file] [--tolerance N]
     
 Examples:
-    python convert_to_3mf.py
-    python convert_to_3mf.py astronaut_3d.glb my_astronaut.3mf
-    python convert_to_3mf.py --mode auto --tolerance 20
+    # Use default input/output names
+    python create_automated_3mf.py
+
+    # Specify input and output files
+    python create_automated_3mf.py astronaut_3d.glb automated_astronaut.3mf
+
+    # Adjust the color matching tolerance
+    python create_automated_3mf.py --tolerance 20
 """
 
 import argparse
@@ -18,7 +39,10 @@ import time
 from pathlib import Path
 
 import trimesh
+from trimesh import repair
 import numpy as np
+import lib3mf
+from lib3mf import get_wrapper
 
 
 def get_color_distance(rgb1, rgb2):
@@ -56,13 +80,13 @@ def format_time(seconds):
         return f"{hours}h {minutes}m {secs:.1f}s"
 
 
-def convert_glb_to_3mf(input_file, output_file, mode='hardcoded', tolerance=15):
+def convert_glb_to_automated_3mf(input_file, output_file, mode='hardcoded', tolerance=15):
     """
-    Convert a GLB file to a multi-color 3MF file.
+    Convert a GLB file to a single multi-part 3MF file with embedded colors.
     
     Args:
         input_file: Path to input GLB file
-        output_file: Path to output 3MF file
+        output_file: Path for the output 3MF file
         mode: 'hardcoded' or 'auto' (auto not implemented yet)
         tolerance: Color matching tolerance for hardcoded mode
     
@@ -169,6 +193,13 @@ def convert_glb_to_3mf(input_file, output_file, mode='hardcoded', tolerance=15):
     print("⏱️  Creating separate meshes per color...")
     step_start = time.time()
     
+    # Define material colors for each color name
+    material_colors = {
+        "WHITE": [255, 255, 255, 255],    # RGBA
+        "RED": [210, 30, 45, 255],         # RGBA  
+        "BLUE_VISOR": [25, 30, 70, 255]    # RGBA
+    }
+    
     new_meshes = []
     for color_name, face_indices in face_indices_by_color.items():
         if not face_indices:  # Skip if no faces were found for this color
@@ -184,47 +215,120 @@ def convert_glb_to_3mf(input_file, output_file, mode='hardcoded', tolerance=15):
         # Remove any vertices that are no longer used
         new_mesh.remove_unreferenced_vertices()
         
+        # Remove any existing vertex colors (they get lost anyway)
+        if hasattr(new_mesh, 'vertex_colors'):
+            new_mesh.vertex_colors = None
+        
+        # Apply material color to the entire mesh
+        material_color = material_colors[color_name]
+        new_mesh.visual.face_colors = material_color
+        
         # Store this mesh with color name for identification
         new_mesh.metadata = {'color_name': color_name}
         new_meshes.append(new_mesh)
         
         print(f"   ✓ {color_name}: {len(new_mesh.vertices)} vertices, {len(new_mesh.faces)} faces")
+        print(f"   🎨 Applied material color: {material_color[:3]} (RGB)")
     
     print(f"   ✓ Mesh splitting complete ({format_time(time.time() - step_start)})")
     
-    # Create a Scene and export to a multi-part 3MF file
+    # Export to a single, multi-part 3MF file using lib3mf
     if new_meshes:
-        print("⏱️  Exporting to 3MF...")
+        print("⏱️  Constructing automated 3MF file...")
         step_start = time.time()
         
-        # A Trimesh scene can hold multiple meshes
-        scene = trimesh.Scene(new_meshes)
+        # Initialize the lib3mf wrapper and create a new 3MF model object.
+        # This model will be our container for all the parts and colors.
+        wrapper = get_wrapper()
+        model = wrapper.CreateModel()
+
+        # Define the colors we'll be using as a "Base Material Group".
+        # This creates a palette inside the 3MF file that can be referenced by objects.
+        base_material_group = model.AddBaseMaterialGroup()
+        for color_name, color in material_colors.items():
+            lib3mf_color = wrapper.RGBAToColor(*color)
+            base_material_group.AddMaterial(color_name, lib3mf_color)
+
+        # Process each color-separated trimesh object.
+        for i, mesh in enumerate(new_meshes):
+            color_name = mesh.metadata['color_name']
+            
+            # CRITICAL STEP: Clean the mesh geometry.
+            # The lib3mf library is very strict and will fail on "degenerate faces"
+            # (i.e., triangles with a repeated vertex, like [100, 200, 100]).
+            # This helper function manually filters them out.
+            clean_faces = remove_degenerate_faces(mesh.faces)
+            
+            # Create a new, empty mesh object within the 3MF model's resources.
+            mesh_object = model.AddMeshObject()
+            mesh_object.SetName(f"{output_path.stem}_{color_name}")
+            
+            # Assign a color from our Base Material Group to this entire object.
+            # The PropertyID corresponds to the material's 1-based index in the group.
+            mesh_object.SetObjectLevelProperty(base_material_group.GetResourceID(), i + 1)
+            
+            # The lib3mf API requires adding geometry piece by piece.
+            # We add all the vertices first, then the cleaned faces.
+            vertices = [lib3mf.Position(Coordinates=tuple(v)) for v in mesh.vertices]
+            for v in vertices:
+                mesh_object.AddVertex(v)
+
+            triangles = [lib3mf.Triangle(Indices=tuple(f)) for f in clean_faces]
+            for t in triangles:
+                mesh_object.AddTriangle(t)
+            
+            # Add the completed mesh object to the final "Build Scene".
+            # This tells the slicer to place this part on the build plate.
+            model.AddBuildItem(mesh_object, wrapper.GetIdentityTransform())
+            print(f"   ✓ Added {color_name} part to 3MF scene.")
+
+        # Write the complete model structure to a .3mf file.
+        writer = model.QueryWriter("3mf")
+        writer.WriteToFile(str(output_path))
         
-        # Export as a 3MF file. Bambu Studio will load this
-        # as a single object with multiple parts.
-        scene.export(str(output_path))
-        
-        print(f"   ✓ 3MF exported ({format_time(time.time() - step_start)})")
+        print(f"   ✓ 3MF export complete ({format_time(time.time() - step_start)})")
         
         # Calculate and display total time
         total_time = time.time() - total_start
-        print(f"\n✅ Success! Multi-color 3MF saved to: {output_path}")
+        print(f"\n✅ Success! Automated 3MF file saved to: {output_path}")
         print(f"⏱️  Total time: {format_time(total_time)}")
-        print(f"🎨 Colors: {len(new_meshes)} separate meshes")
+        print(f"🎨 Parts: {len(new_meshes)} separate objects in file")
         
         return output_path
     else:
         raise RuntimeError("No meshes were generated. Check color matching and tolerance settings.")
 
 
+def remove_degenerate_faces(faces):
+    """
+    Manually filters out faces that have duplicate vertex indices.
+
+    The lib3mf library enforces strict geometry standards and will raise an
+    exception if it finds a "degenerate face" (a triangle where two or more
+    vertices are the same, e.g., [100, 200, 100]). This function is a
+    brute-force way to ensure all faces are valid before exporting.
+
+    Args:
+        faces (np.ndarray): A NumPy array of face indices (n, 3).
+
+    Returns:
+        np.ndarray: A cleaned NumPy array of face indices.
+    """
+    new_faces = []
+    for face in faces:
+        if len(set(face)) == 3:
+            new_faces.append(face)
+    return np.array(new_faces)
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert GLB files to multi-color 3MF files for Bambu Lab AMS printing",
+        description="Convert GLB files to a single multi-part 3MF file for Bambu Lab AMS printing",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   %(prog)s
-  %(prog)s astronaut_3d.glb my_astronaut.3mf
+  %(prog)s astronaut_3d.glb automated_astronaut.3mf
   %(prog)s --mode auto --tolerance 20
   %(prog)s input.glb output.3mf --tolerance 25
         """
@@ -242,8 +346,8 @@ Examples:
         'output_file',
         type=str,
         nargs='?',
-        default='printable_astronaut.3mf',
-        help='Path to output 3MF file (default: printable_astronaut.3mf)'
+        default='automated_astronaut.3mf',
+        help='Path for the output 3MF file (default: automated_astronaut.3mf)'
     )
     
     parser.add_argument(
@@ -264,7 +368,7 @@ Examples:
     args = parser.parse_args()
     
     try:
-        convert_glb_to_3mf(
+        convert_glb_to_automated_3mf(
             input_file=args.input_file,
             output_file=args.output_file,
             mode=args.mode,

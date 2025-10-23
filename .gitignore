@@ -169,3 +169,5 @@ gradio_cache/
 #.idea/
 
 *.glb
+*.ply 
+*.stl
