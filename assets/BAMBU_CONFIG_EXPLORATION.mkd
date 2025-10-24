@@ -48,7 +48,7 @@ Critical insights into Bambu Studio and the 3MF format include:
 
 **Implementation Status:**
 
-*   **Optimized JSON Profiles:** (Completed) Optimized profiles for 0.12mm detail (slow speeds, tree supports, gyroid infill) have been defined for all 5 target printers, along with a universal filament profile.
+*   **Optimized JSON Profiles:** (Generated) Optimized profiles for 0.12mm detail (slow speeds, tree supports, gyroid infill) have been defined for all 5 target printers, along with a universal filament profile. -- WE NEVER MANAGED TO GET THE PROFILES ACCEPTED BY BAMBU STUDIO
 *   **Python Automation Script:** (Completed) A script utilizing `zipfile` and `xml.etree.ElementTree` has been developed to perform the template modification and handle XML namespaces.
 *   **Template Files:** (Action Required) The prerequisite `.3mf` templates must be generated manually.
 
