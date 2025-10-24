@@ -25,9 +25,9 @@ We explored different methods for delivering these settings and validated a stra
 **B. Intermediate Approach: Generating Standalone JSON files (SUBOPTIMAL)**
 
 *   **What was tried:** Switching the output to the correct JSON format and defining optimized settings.
-*   **Why it was suboptimal:** While technically correct, distributing standalone JSON files requires the user to manually import the configuration and the STL separately. This is not the seamless experience we targeted.
+*   **Why it was suboptimal:** While technically correct, distributing standalone JSON files requires the user to manually import the configuration and the STL separately. This is not the seamless experience we targeted. AND IT ACTUALLY NEVER IMPORTED -- WE NEVER MANAGED TO GET BAMBU LAB TO ACCEPT A CONFIG
 
-**C. Current Approach: Automated .3MF Generation (VALIDATED STRATEGY)**
+**C. Current Approach: Automated .3MF Generation **
 
 *   **The Solution:** The industry standard is the `.3mf` project file format, which bundles the geometry (STL) and all slicer settings (JSON) into one archive.
 *   **The Strategy:** We validated the **"Template Modification Strategy"**. Generating a compliant `.3mf` from scratch is overly complex. Instead, we use pre-configured `.3mf` templates and programmatically replace the geometry inside them using Python.
